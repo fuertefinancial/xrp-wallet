@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XRP Wallet</title>
+</head>
+<body>
+  <h1>XRP Ledger Wallet</h1>
+
+  <!-- Wallet Address Generation -->
+  <div>
+    <button id="generate-wallet">Generate Wallet</button>
+    <p>Wallet Address: <span id="wallet-address"></span></p>
+    <p>Wallet Secret: <span id="wallet-secret"></span></p>
+  </div>
+
+  <!-- Check Balance -->
+  <div>
+    <button id="check-balance">Check Balance</button>
+    <p>Balance: <span id="balance">0</span> XRP</p>
+  </div>
+
+  <!-- Send XRP -->
+  <div>
+    <h3>Send XRP</h3>
+    <label for="to-address">Recipient Address:</label>
+    <input type="text" id="to-address" placeholder="Enter destination address">
+    <label for="amount">Amount (XRP):</label>
+    <input type="text" id="amount" placeholder="Amount">
+    <button id="send-xrp">Send XRP</button>
+  </div>
+
+  <script type="module">
+    import {Client, Wallet, xrpToDrops} from "https://cdn.jsdelivr.net/npm/xrpl@2.6.0";
+
+    let wallet;
+
+    // Connect to the XRP Ledger Testnet
+    async function connectToLedger() {
+      const client = new Client('wss://s.altnet.rippletest.net:51233'); // Testnet URL
+      await client.connect();
+      console.log("Connected to the XRP Ledger Testnet");
+      return client;
+    }
+
+    // Generate a new wallet
+    async function generateWallet() {
+      const client = await connectToLedger();
+      const wallet = Wallet.generate();
+      console.log("Generated Wallet Address:", wallet.address);
+      console.log("Wallet Secret:", wallet.seed);
+      await client.disconnect();
+      return wallet;
+    }
+
+    // Get wallet balance
+    async function getBalance(walletAddress) {
+      const client = await connectToLedger();
+      const accountInfo = await client.request({
+        command: "account_info",
+        account: walletAddress,
+        ledger_index: "validated"
+      });
+      const balance = accountInfo.result.account_data.Balance;
+      console.log(`Balance for ${walletAddress}: ${balance} drops (XRP)`);
+      await client.disconnect();
+      return balance / 1000000; // Convert from drops to XRP
+    }
+
+    // Send XRP to another address
+    async function sendXRP(wallet, destinationAddress, amount) {
+      const client = await connectToLedger();
+
+      const prepared = await client.autofill({
+        TransactionType: "Payment",
+        Account: wallet.address,
+        Amount: xrpToDrops(amount), // Amount in drops
+        Destination: destinationAddress
+      });
+
+      const signed = wallet.sign(prepared);
+      const result = await client.submitAndWait(signed.tx_blob);
+
+      console.log("Transaction result:", result);
+      await client.disconnect();
+      return result;
+    }
+
+    // DOM Events and Integration
+
+    document.getElementById('generate-wallet').addEventListener('click', async () => {
+      wallet = await generateWallet();
+      document.getElementById('wallet-address').innerText = wallet.address;
+      document.getElementById('wallet-secret').innerText = wallet.seed;
+    });
+
+    document.getElementById('check-balance').addEventListener('click', async () => {
+      if (wallet) {
+        const balance = await getBalance(wallet.address);
+        document.getElementById('balance').innerText = balance;
+      } else {
+        alert('Generate a wallet first!');
+      }
+    });
+
+    document.getElementById('send-xrp').addEventListener('click', async () => {
+      const toAddress = document.getElementById('to-address').value;
+      const amount = parseFloat(document.getElementById('amount').value);
+
+      if (wallet && toAddress && amount > 0) {
+        const result = await sendXRP(wallet, toAddress, amount);
+        alert('Transaction successful! Transaction Hash: ' + result.result.hash);
+      } else {
+        alert('Please generate a wallet, enter a recipient address, and specify a valid amount.');
+      }
+    });
+
+  </script>
+</body>
+</html>
